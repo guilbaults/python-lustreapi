@@ -233,7 +233,10 @@ class hsm_agent():
     def __init__(self):
         self.hsm_copytool_private = hsm_copytool_private()
 
-    def hsm_copytool_register(self, mnt, archives, rfd_flags):
+    def __del__(self):
+        self.hsm_copytool_unregister()
+
+    def hsm_copytool_register(self, mnt, archives=[1], rfd_flags=0):
         archives_arr = (ctypes.c_int * len(archives))(*archives)
         archives_p = ctypes.POINTER(ctypes.c_int)
         lustre.llapi_hsm_copytool_register.argtypes = [
@@ -248,7 +251,15 @@ class hsm_agent():
         if err < 0:
             err = 0 - err
             raise IOError(err, os.strerror(err))
-        return
+
+    def hsm_copytool_unregister(self):
+        lustre.llapi_hsm_copytool_unregister.argtypes = [
+            ctypes.POINTER(hsm_copytool_private)]
+        err = lustre.llapi_hsm_copytool_unregister(
+            ctypes.byref(self.hsm_copytool_private))
+        if err < 0:
+            err = 0 - err
+            raise IOError(err, os.strerror(err))
 
 
 class captureStderr():
