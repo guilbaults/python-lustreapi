@@ -25,7 +25,6 @@ import ctypes
 import ctypes.util
 import os
 import select
-import sys
 
 
 import pkg_resources
@@ -35,6 +34,16 @@ except pkg_resources.DistributionNotFound:
     __version__ = "UNRELEASED"
 
 LUSTREMAGIC = 0xbd00bd0
+HSM_FLAGS = [
+    ('NONE', "0x00000000"),
+    ('EXISTS', "0x00000001"),
+    ('DIRTY', "0x00000002"),
+    ('RELEASED', "0x00000004"),
+    ('ARCHIVED', "0x00000008"),
+    ('NORELEASE', "0x00000010"),
+    ('NOARCHIVE', "0x00000020"),
+    ('LOST', "0x00000040"),
+]
 
 liblocation = ctypes.util.find_library("lustreapi")
 # See if liblustreapi.so is in the same directory as the module
@@ -75,8 +84,59 @@ class hsm_user_state(ctypes.Structure):
         ]
 
 
+class lu_fid(ctypes.Structure):
+    _fields_ = [
+        ("f_seq", ctypes.c_ulonglong),
+        ("f_oid", ctypes.c_uint),
+        ("f_ver", ctypes.c_uint),
+        ]
+
+
+class Fid:
+    def __init__(self, seq, oid, ver):
+        self.seq = int(seq)
+        self.oid = int(oid)
+        self.ver = int(ver)
+
+    def __str__(self):
+        string = "[0x%x:0x%x:0x%x]" \
+                 % (self.seq, self.oid, self.ver)
+        return(string)
+
+
+class HSM_state:
+    """
+    """
+    def __init__(self, hus):
+        self.archive_id = int(hus.hus_archive_id)
+        self.states = []
+        state = int(hus.hus_states)
+        for flag in HSM_FLAGS:
+            if state & int(flag[1], 16):
+                self.states.append(flag[0])
+
+    def __str__(self):
+        if len(self.states) > 1:
+            string = "Archive id:%i" % self.archive_id
+            string += "\nStates: "
+            states = " ".join(self.states)
+            return string + states
+        else:
+            return "No HSM state"
+
+
+def hsm_state_from_flags(flags):
+    state = 0
+    for flag_def in HSM_FLAGS:
+        for flag in flags:
+            if flag_def[0] == flag:
+                state += int(flag_def[1], 16)
+    return state
+
+
 class hsm_copytool_private(ctypes.Structure):
     pass
+
 
 lov_user_md_v1_p = ctypes.POINTER(lov_user_md_v1)
 hsm_user_state_p = ctypes.POINTER(hsm_user_state)
@@ -86,6 +146,8 @@ lustre.llapi_file_open.argtypes = [ctypes.c_char_p, ctypes.c_int,
                                    ctypes.c_int, ctypes.c_ulong, ctypes.c_int,
                                    ctypes.c_int, ctypes.c_int]
 lustre.llapi_hsm_state_get.argtypes = [ctypes.c_char_p, hsm_user_state_p]
+lustre.llapi_hsm_state_set.argtypes = [ctypes.c_char_p, ctypes.c_uint,
+                                       ctypes.c_uint, ctypes.c_uint]
 
 
 class stripeObj:
@@ -220,16 +282,43 @@ def setstripe(filename, stripeobj=None, stripesize=0, stripeoffset=-1,
         return(0)
 
 
-def get_hsm_state(filename):
-    hus = hsm_user_state()
-    err = lustre.llapi_hsm_state_get(filename, ctypes.byref(hus))
+def path2fid(filename):
+    lufid = lu_fid()
+    err = lustre.llapi_path2fid(
+        filename.encode('ascii'),
+        ctypes.byref(lufid))
     if err < 0:
         err = 0 - err
         raise IOError(err, os.strerror(err))
-    return hus
+    fid = Fid(lufid.f_seq, lufid.f_oid, lufid.f_ver)
+    return fid
+
+
+def get_hsm_state(filename):
+    hus = hsm_user_state()
+    err = lustre.llapi_hsm_state_get(
+        filename.encode('ascii'),
+        ctypes.byref(hus))
+    if err < 0:
+        err = 0 - err
+        raise IOError(err, os.strerror(err))
+    return HSM_state(hus)
+
+
+def set_hsm_state(filename, setmask, clearmask, archive_id):
+    print(filename, hsm_state_from_flags(setmask), hsm_state_from_flags(clearmask), archive_id)
+    err = lustre.llapi_hsm_state_set(
+        filename.encode('ascii'),
+        hsm_state_from_flags(setmask),
+        hsm_state_from_flags(clearmask),
+        archive_id)
+    if err < 0:
+        err = 0 - err
+        raise IOError(err, os.strerror(err))
 
 
 class hsm_agent():
+    """Not currently working"""
     def __init__(self):
         self.hsm_copytool_private = hsm_copytool_private()
 
