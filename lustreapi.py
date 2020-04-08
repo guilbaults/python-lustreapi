@@ -285,7 +285,7 @@ def setstripe(filename, stripeobj=None, stripesize=0, stripeoffset=-1,
 def path2fid(filename):
     lufid = lu_fid()
     err = lustre.llapi_path2fid(
-        filename.encode('ascii'),
+        filename.encode('utf8'),
         ctypes.byref(lufid))
     if err < 0:
         err = 0 - err
@@ -297,7 +297,7 @@ def path2fid(filename):
 def get_hsm_state(filename):
     hus = hsm_user_state()
     err = lustre.llapi_hsm_state_get(
-        filename.encode('ascii'),
+        filename.encode('utf8'),
         ctypes.byref(hus))
     if err < 0:
         err = 0 - err
@@ -308,7 +308,7 @@ def get_hsm_state(filename):
 def set_hsm_state(filename, setmask, clearmask, archive_id):
     print(filename, hsm_state_from_flags(setmask), hsm_state_from_flags(clearmask), archive_id)
     err = lustre.llapi_hsm_state_set(
-        filename.encode('ascii'),
+        filename.encode('utf8'),
         hsm_state_from_flags(setmask),
         hsm_state_from_flags(clearmask),
         archive_id)
