@@ -294,6 +294,25 @@ def path2fid(filename):
     return fid
 
 
+def fid2path(device, fid):
+    path = ctypes.create_string_buffer(4096)
+    pathlen = ctypes.c_int(4096)
+    recno = ctypes.c_longlong()
+    linkno = ctypes.c_int()
+    err = lustre.llapi_fid2path(
+        device.encode(),
+        fid.encode(),
+        path,
+        pathlen,
+        ctypes.byref(recno),
+        ctypes.byref(linkno))
+
+    if err < 0:
+        err = 0 - err
+        raise IOError(err, os.strerror(err))
+    return device + "/" + path.value.decode()
+
+
 def get_hsm_state(filename):
     hus = hsm_user_state()
     err = lustre.llapi_hsm_state_get(
